@@ -1,7 +1,7 @@
 /**
  * 日志打点上报
  *
- * 处理读写并发 ？？？？/
+ * 处理读写并发？？？？？
  */
 import config from "./logConfig";
 import file from "@system.file";
@@ -14,9 +14,9 @@ import storage from "@system.storage";
 import request from "@system.request";
 (function(APP) {
   const FILE_PATH = "internal://files";
-  const REAL_API_PATH = $utils.composeApiPath("****");
-  const OFFLINE_API_PATH = $utils.composeApiPath("*****");
-  const packageName = "*****";
+  const REAL_API_PATH = $utils.composePath("*****");
+  const OFFLINE_API_PATH = $utils.composePath("*****");
+  const packageName = "*******";
   const initIntervalSec = 2 * 60 * 1000;
   function initLogStorage() {
     let obj = {};
@@ -111,21 +111,24 @@ import request from "@system.request";
             versionName,
             platformVersionCode
           } = this.hapInfo;
+          this.uid = this.self.$def.data.userInfo.uid;
+          this.deviceInfo = APP.$deviceInfo.deviceInfo;
           this.commonParams = {
             imei: device,
             uid: this.uid,
-            deviceId: device,
-            platform: "hap",
-            versionCode,
-            osversion: platformVersionCode,
-            channelId: brand,
-            net: type,
-            manufacturer,
+            did: device,
+            pfm: "hap",
+            // versionCode,
+            // osversion: platformVersionCode,
+            chid: brand,
+            // net: type,
+            // manufacturer,
             ts: new Date().getTime()
           };
-          this.uid = this.self.$def.data.userInfo.uid;
-          this.deviceInfo = APP.$deviceInfo.deviceInfo;
           this.intervalLoop(this.offLoop, config.checkUploadIntervalSec * 1000);
+          // setTimeout(() => {
+          //   this.actionLog({ comp: 11111 });
+          // }, 1500);
         })
         .catch(err => {});
     }
@@ -185,6 +188,7 @@ import request from "@system.request";
     realTime(params) {
       const type = "real";
       const obj = Object.assign(this.commonParams, params);
+      console.log(obj, "obj");
       return new Promise((resolve, reject) => {
         this._get(type, REAL_API_PATH, obj).then(res => {
           resolve(res);
@@ -203,10 +207,11 @@ import request from "@system.request";
     }
     //区分不同的log_code
     codeType(code, params) {
-      const obj = Object.assign(params, { log_code: code });
-      config.detail[1000] == 2
-        ? this.realTime(obj)
-        : this._judgeFileSize(Object.assign(this.commonParams, obj));
+      config.detail[code] == 2
+        ? this.realTime(params)
+        : this._judgeFileSize(
+            Object.assign(this.commonParams, params, { log_code: code })
+          );
     }
     //error
     onError(err) {
@@ -234,28 +239,38 @@ import request from "@system.request";
         method: "POST",
         header: {
           "Content-Type":
-            type == "real" ? "application/json" : "multipart/form-data",
-          "User-Agent-ZX": this.deviceInfo
+            type == "real"
+              ? "application/x-www-form-urlencoded"
+              : "multipart/form-data",
+          "User-Agent-ZX": APP.$deviceInfo.deviceInfo
         }
       };
       if (type == "real") {
         file = `${JSON.stringify(this.firstLog)}\n${JSON.stringify(obj)}`;
-        param = Object.assign(param, { data: { file, logType: obj.log_code } });
+        param = Object.assign(param, {
+          data: { file, logType: String(obj.log_code) }
+        });
+        console.log(param);
         return new Promise((resolve, reject) => {
           $fetch
             .fetch(param)
             .then(res => {
-              if (res.data && JSON.parse(res.data).resultCode == 0) {
+              if (
+                res.data.code == 200 &&
+                res.data.data &&
+                JSON.parse(res.data.data).resultCode == 0
+              ) {
                 console.log("实时日志上报成功");
                 console.log(res.data);
                 resolve(res.data);
               } else {
                 console.log("实时日志上报失败");
-                console.log(res.data);
-                resolve(res.data);
+                reject();
+                this._judgeFileSize(obj);
               }
             })
             .catch(err => {
+              console.log("实时日志上报失败");
               reject(err);
               this._judgeFileSize(obj);
             });
@@ -304,7 +319,7 @@ import request from "@system.request";
     }
     //存取最近一次操作的日志并判断文件大小
     _judgeFileSize(data) {
-      console.log(data);
+      console.log(data, ".................");
       const { log_code } = data,
         { y, M, d, h, m, s } = date(),
         uri = `${FILE_PATH}/${log_code}/${packageName}.${y}${M}${d}${h}${m}${s}.txt`,
@@ -321,22 +336,31 @@ import request from "@system.request";
             const currentLog = logList.filter(
               item => item.log_code == log_code
             );
-            this._getFile(currentLog[0].uri).then(r => {
-              let newUri = "";
-              if (log_code != 7000) {
-                newUri =
-                  r.length >= config.maxFileSize ? uri : currentLog[0].uri;
-                logList.forEach(item => {
-                  if (item.log_code == log_code) {
-                    item.uri = newUri;
-                  }
-                });
-              } else {
-                newUri = uri;
-              }
-
-              this._set(newUri, logList, data);
-            });
+            const currentUri = currentLog[0].currentUri;
+            this._getFile(currentUri)
+              .then(r => {
+                let newUri = "";
+                console.log(log_code, "log_code");
+                if (log_code != 7000) {
+                  newUri = r.length >= config.maxFileSize ? uri : currentUri;
+                  logList.forEach(item => {
+                    if (item.log_code == log_code) {
+                      item.currentUri = newUri;
+                    }
+                  });
+                } else {
+                  newUri = uri;
+                }
+                this._set(newUri, logList, data);
+              })
+              .catch(() => {
+                logList.splice(
+                  logList.findIndex(item => item.currentUri == currentUri),
+                  1
+                );
+                logList.push(initLog);
+                this._set(uri, logList, data);
+              });
           } else {
             logList.push(initLog);
             this._set(uri, logList, data);
@@ -373,6 +397,7 @@ import request from "@system.request";
     _readLog() {}
     //获取文件信息
     _getFile(uri) {
+      console.log(uri, "uri");
       return new Promise((resolve, reject) => {
         file.get({
           uri: uri,
@@ -380,8 +405,9 @@ import request from "@system.request";
             resolve(data);
             console.log("获取文件信息成功");
           },
-          fail: () => {
-            console.log("获取文件信息出错");
+          fail: (data, code) => {
+            reject();
+            console.log(`获取文件信息出错,${code}`);
           }
         });
       });
