@@ -1,7 +1,7 @@
 /**
  * 日志打点上报
  *
- * 处理读写并发？？？？？
+ * 处理读写并发
  */
 import config from "./logConfig";
 import file from "@system.file";
@@ -12,11 +12,12 @@ import device from "@system.device";
 import network from "@system.network";
 import storage from "@system.storage";
 import request from "@system.request";
+import router from "@system.router";
 (function(APP) {
   const FILE_PATH = "internal://files";
-  const REAL_API_PATH = $utils.composePath("*****");
-  const OFFLINE_API_PATH = $utils.composePath("*****");
-  const packageName = "*******";
+  const REAL_API_PATH = $utils.composePath("*******");
+  const OFFLINE_API_PATH = $utils.composePath("********");
+  const packageName = "**********";
   const initIntervalSec = 2 * 60 * 1000;
   function initLogStorage() {
     let obj = {};
@@ -74,7 +75,18 @@ import request from "@system.request";
   function offLineCodes() {
     return Object.keys(config.detail).filter(key => config.detail[key] == 1);
   }
-  class APP_LOG {
+  const page = (e = {}) =>
+    Object.assign(
+      {
+        page_name: "",
+        page_path: "",
+        sta_time: "",
+        end_time: "",
+        duration: ""
+      },
+      e
+    );
+  const APP_LOG = new (class {
     constructor() {
       this.self = null;
       this.hapInfo = {};
@@ -82,6 +94,7 @@ import request from "@system.request";
       this.uid = "";
       this.deviceInfo = {};
       this.currentFile = "";
+      this.page = null;
       //每个日志包含两条，，第一条
       this.firstLog = {
         index: {
@@ -212,6 +225,31 @@ import request from "@system.request";
         : this._judgeFileSize(
             Object.assign(this.commonParams, params, { log_code: code })
           );
+    }
+    //页面进入
+    pageShow(e) {
+      this.pageState();
+      console.log(e, "page_show");
+    }
+    //页面隐藏
+    pageHide(e) {
+      this.pageEnd();
+      console.log(e, "page_hide");
+    }
+    //页面路由
+    pageState() {
+      const routes = router.getState() || {};
+      this.page = page({
+        page_name: routes.name,
+        page_path: routes.path,
+        sta_time: Date.now()
+      });
+    }
+    //页面结束
+    pageEnd() {
+      const end = Date.now();
+      this.page.end_time = end;
+      this.page.duration = end - this.page.sta_time;
     }
     //error
     onError(err) {
@@ -446,6 +484,19 @@ import request from "@system.request";
         });
       });
     }
-  }
+  })();
   APP.APP_LOG = APP_LOG;
+  APP.Custom_page = function(e) {
+    let showFn = e.onShow,
+      hideFn = e.onHide();
+    e.onShow = function() {
+      APP_LOG.pageShow(this);
+      showFn && showFn.call(this);
+    };
+    e.onHide = function() {
+      APP_LOG.pageHide(this);
+      hideFn && hideFn.call(this);
+    };
+    return e;
+  };
 })(global.__proto__ || global);
