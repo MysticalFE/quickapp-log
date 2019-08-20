@@ -488,7 +488,7 @@ import router from "@system.router";
   APP.APP_LOG = APP_LOG;
   APP.Custom_page = function(e) {
     let showFn = e.onShow,
-      hideFn = e.onHide();
+      hideFn = e.onHide;
     e.onShow = function() {
       APP_LOG.pageShow(this);
       showFn && showFn.call(this);
