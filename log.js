@@ -1,7 +1,6 @@
 /**
  * 日志打点上报
  *
- * 处理读写并发
  */
 import config from "./logConfig";
 import file from "@system.file";
@@ -15,9 +14,9 @@ import request from "@system.request";
 import router from "@system.router";
 (function(APP) {
   const FILE_PATH = "internal://files";
-  const REAL_API_PATH = $utils.composePath("*******");
-  const OFFLINE_API_PATH = $utils.composePath("********");
-  const packageName = "**********";
+  const REAL_API_PATH = $utils.composePath("*****************");
+  const OFFLINE_API_PATH = $utils.composePath("*****************");
+  const packageName = "********************";
   const initIntervalSec = 2 * 60 * 1000;
   function initLogStorage() {
     let obj = {};
@@ -109,13 +108,20 @@ import router from "@system.router";
       this.self = t;
       const appInfo = app.getInfo();
       Promise.all([
+        $utils.getStorage("userInfo"),
         deviceLoop.deviceInfo(),
         deviceLoop.deviceIds(),
         deviceLoop.netType()
       ])
         .then(res => {
+          Object.keys(res).map(key => {
+            if (typeof res[key] === "string") res[key] = JSON.parse(res[key]);
+          });
           this.hapInfo = Object.assign({}, appInfo, ...res);
+          // console.log(this.hapInfo);
           const {
+            uid,
+            mac,
             device,
             brand,
             manufacturer,
@@ -124,19 +130,23 @@ import router from "@system.router";
             versionName,
             platformVersionCode
           } = this.hapInfo;
-          this.uid = this.self.$def.data.userInfo.uid;
+          this.uid = uid ? uid : this.self.$def.data.userInfo.uid;
           this.deviceInfo = APP.$deviceInfo.deviceInfo;
           this.commonParams = {
             imei: device,
             uid: this.uid,
             did: device,
             pfm: "hap",
-            // versionCode,
+            ver: versionCode,
             // osversion: platformVersionCode,
+            mac,
             chid: brand,
             // net: type,
             // manufacturer,
-            ts: new Date().getTime()
+            ts: new Date().getTime(),
+            "@timestamp":
+              new Date().toJSON() + new Date().toTimeString().split("GMT")[1],
+            action: "01"
           };
           this.intervalLoop(this.offLoop, config.checkUploadIntervalSec * 1000);
           // setTimeout(() => {
@@ -181,15 +191,15 @@ import router from "@system.router";
     }
     //1000 行为日志
     actionLog(params) {
-      this.codeType(1000, params);
+      this.codeType(Object.assign(params, { log_code: 1000 }));
     }
     //3000 网络异常
     netLog(params) {
-      this.codeType(3000, params);
+      this.codeType(Object.assign(params, { log_code: 3000 }));
     }
     //8000 质量上报
     qaLog(params) {
-      this.codeType(8000, params);
+      this.codeType(Object.assign(params, { log_code: 8000 }));
     }
     /**
      * 实时上传
@@ -219,12 +229,15 @@ import router from "@system.router";
       });
     }
     //区分不同的log_code
-    codeType(code, params) {
-      config.detail[code] == 2
+    codeType(params) {
+      Object.keys(params).forEach(key => {
+        if (typeof params[key] === "object") {
+          params[key] = JSON.stringify(params[key]);
+        }
+      });
+      config.detail[params.log_code] == 2
         ? this.realTime(params)
-        : this._judgeFileSize(
-            Object.assign(this.commonParams, params, { log_code: code })
-          );
+        : this._judgeFileSize(Object.assign(this.commonParams, params));
     }
     //页面进入
     pageShow(e) {
