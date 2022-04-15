@@ -1,5 +1,7 @@
 ## 快应用，日志上报方案 包括 实时 离线 crash收集 pageShow pageHide
 
+### 日志上报整体设计
+<img width="942" alt="image" src="https://user-images.githubusercontent.com/18510481/163556242-c709ab18-b160-47c5-8e33-103b5a92c179.png">
 
 ### 初始化注入
 
